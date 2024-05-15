@@ -1,0 +1,124 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(fpp2)
+library(ggplot2)
+library(forecast)
+library(gridExtra)
+library(seasonal)
+library(tseries)
+library(urca)
+library(dplyr)
+library(tidyr)
+library(maps)
+library(stringr)
+library(sf)
+```
+
+```{r}
+air <- read.csv("US_Monthly_Air_Passengers00_19.csv")
+
+nv <- air %>%
+  filter( ORIGIN_STATE_ABR == "NV" | DEST_STATE_ABR == "NV")
+
+
+```
+
+```{r}
+nv <- nv %>%
+  mutate(
+    origin_pat = paste0(", ", ORIGIN_STATE_ABR, "$"),  # Create the regex pattern for matching
+    dest_pat = paste0(", ", DEST_STATE_ABR, "$"),
+    ORIGIN_CITY = if_else(
+      str_detect(ORIGIN_CITY_NAME, origin_pat),  # Check if CITY ends with the constructed pattern
+      str_trim(str_remove(ORIGIN_CITY_NAME, origin_pat)),  # Remove it and trim whitespace
+      ORIGIN_CITY_NAME  # Keep the original CITY if pattern does not match
+    ),
+    DEST_CITY = if_else(
+      str_detect(DEST_CITY_NAME, dest_pat),  # Check if CITY ends with the constructed pattern
+      str_trim(str_remove(DEST_CITY_NAME, dest_pat)),  # Remove it and trim whitespace
+      DEST_CITY_NAME  # Keep the original CITY if pattern does not match
+    )
+  ) %>%
+  select(-origin_pat,-dest_pat) 
+```
+
+```{r}
+us_cities <- as.data.frame(us.cities)
+
+us_cities <- us_cities %>% 
+  rename(
+    STATE_ABR = country.etc,
+    CITY = name,
+    POP = pop,
+    LAT = lat,
+    LONG = long,
+    CAPITAL = capital
+    )
+head(us_cities)
+print(colnames(us_cities))
+```
+
+```{r}
+us_cities <- us_cities %>%
+  mutate(
+    pattern = paste0(" ", STATE_ABR, "$"),  # Create the regex pattern for matching
+    CITY = if_else(
+      str_detect(CITY, pattern),  # Check if CITY ends with the constructed pattern
+      str_trim(str_remove(CITY, pattern)),  # Remove it and trim whitespace
+      CITY  # Keep the original CITY if pattern does not match
+    )
+  ) %>%
+  select(-pattern)  # Optionally remove the pattern column if it's no longer needed
+
+```
+
+```{r}
+head(us_cities$CITY)
+```
+
+```{r}
+print(colnames(us_cities))
+print(colnames(nv))
+```
+
+```{r}
+library(dplyr)
+
+# Prepare subsets of us_cities with only necessary columns
+us_cities_orig <- us_cities %>%
+  select(CITY, STATE_ABR, LAT, LONG) %>%
+  rename(LAT_ORIG = LAT, LONG_ORIG = LONG)
+
+us_cities_dest <- us_cities %>%
+  select(CITY, STATE_ABR, LAT, LONG) %>%
+  rename(LAT_DEST = LAT, LONG_DEST = LONG)
+
+# Join with nv to add origin coordinates
+nv_with_orig_coords <- nv %>%
+  left_join(us_cities_orig, by = c("ORIGIN_CITY" = "CITY", "ORIGIN_STATE_ABR" = "STATE_ABR"))
+
+# Join with nv to add destination coordinates
+nv_complete <- nv_with_orig_coords %>%
+  left_join(us_cities_dest, by = c("DEST_CITY" = "CITY", "DEST_STATE_ABR" = "STATE_ABR"))
+
+# Optionally, you can adjust the select statement to arrange columns as needed
+nv_complete <- nv_complete %>%
+  select(Sum_PASSENGERS, AIRLINE_ID, CARRIER_NAME, ORIGIN, DEST, YEAR, MONTH,
+         LAT_ORIG, LONG_ORIG, LAT_DEST, LONG_DEST, everything())
+
+```
+
+```{r}
+las_reno <- nv_complete %>%
+  select(YEAR, MONTH, Sum_PASSENGERS, AIRLINE_ID, CARRIER_NAME,
+         ORIGIN, ORIGIN_CITY, ORIGIN_STATE_ABR, LAT_ORIG, LONG_ORIG,
+         DEST, DEST_CITY, DEST_STATE_ABR, LAT_DEST, LONG_DEST,) %>%
+  filter(ORIGIN == "LAS" | ORIGIN == "RNO") %>%
+  filter(CARRIER_NAME == "Southwest Airlines Co.") %>%
+  distinct(CARRIER_NAME, ORIGIN, DEST, .keep_all = TRUE)
+
+```
