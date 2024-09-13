@@ -1,2 +1,2 @@
 # Nevada_Airlines
-Time series models used to analyze the most popular airline in the state of Nevada
+Group prjoect using time series models to analyze the most popular airline in the state of Nevada
